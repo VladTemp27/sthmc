@@ -43,3 +43,23 @@ Learn more about [working with the Wix CLI](https://support.wix.com/en/article/v
 
 ## Invite contributors to work with you
 Git Integration & Wix CLI extends Editor X's [concurrent editing](https://support.wix.com/en/article/editor-x-about-concurrent-editing) capabilities. Invite other developers as collaborators on your [site](https://support.wix.com/en/article/inviting-people-to-contribute-to-your-site) and your [GitHub repo](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-access-to-your-personal-repositories/inviting-collaborators-to-a-personal-repository). Multiple developers can work on a site's code at once.
+
+## Custom auth (email/password, no Wix Members)
+
+This repo includes a custom backend auth flow using HTTP functions and CMS collections:
+
+- `POST /_functions/login`
+- `POST /_functions/logout`
+- `GET /_functions/me`
+
+Implementation modules are under `src/backend/auth/*`.
+
+Required collection IDs:
+
+- `CustomUsers`
+- `AuthSessions`
+
+See:
+
+- `docs/auth-data-model.md`
+- `docs/auth-manual-ops.md`
