@@ -1,16 +1,15 @@
 import wixLocation from 'wix-location';
+import { session } from 'wix-storage';
+import { me as meViaWebModule } from 'backend/auth-api';
 
-const ME_ENDPOINT = '/_functions/me';
 const LOGIN_PATH = '/log-in';
+const SESSION_KEY = 'custom_auth_session_id';
 
 async function enforceAuthGuard() {
     try {
-        const response = await fetch(ME_ENDPOINT, {
-            method: 'GET',
-            credentials: 'include'
-        });
-
-        if (response.ok) {
+        const sessionId = session.getItem(SESSION_KEY);
+        const result = await meViaWebModule(sessionId);
+        if (result?.ok) {
             return;
         }
     } catch (_err) {

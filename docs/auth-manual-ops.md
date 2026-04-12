@@ -51,3 +51,9 @@ Current frontend code attempts these IDs:
 - Optional form container: `#loginform` (and fallback `#loginForm`)
 
 If your actual IDs differ, rename elements in the editor or update `src/pages/Log in.pv6yk.js` accordingly.
+
+## 6) Preview endpoint behavior
+
+Authentication now runs via web module calls (`backend/auth-api.jsw`) from page code, so it doesn't rely on `/_functions` URL routing in preview.
+
+Session ID is stored in browser session storage under `custom_auth_session_id` and checked by protected pages through the same web module.

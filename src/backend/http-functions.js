@@ -39,27 +39,57 @@ function fromResult(result) {
 
 export async function post_login(request) {
     try {
+        console.log('[http-functions]', 'POST /_functions/login start');
+        console.info('[http-functions]', 'POST /_functions/login called');
         const result = await loginFromRequest(request);
+        console.log('[http-functions]', 'POST /_functions/login result', result.status);
+        console.info('[http-functions]', 'POST /_functions/login completed', {
+            ok: result.ok,
+            status: result.status
+        });
         return fromResult(result);
-    } catch (_err) {
+    } catch (err) {
+        console.error('[http-functions]', 'POST /_functions/login failed', {
+            message: err?.message || 'Unknown error'
+        });
         return withJsonHeaders(serverError({ body: jsonBody({ error: 'Internal server error' }) }));
     }
 }
 
 export async function post_logout(request) {
     try {
+        console.log('[http-functions]', 'POST /_functions/logout start');
+        console.info('[http-functions]', 'POST /_functions/logout called');
         const result = await logoutFromRequest(request);
+        console.log('[http-functions]', 'POST /_functions/logout result', result.status);
+        console.info('[http-functions]', 'POST /_functions/logout completed', {
+            ok: result.ok,
+            status: result.status
+        });
         return fromResult(result);
-    } catch (_err) {
+    } catch (err) {
+        console.error('[http-functions]', 'POST /_functions/logout failed', {
+            message: err?.message || 'Unknown error'
+        });
         return withJsonHeaders(serverError({ body: jsonBody({ error: 'Internal server error' }) }));
     }
 }
 
 export async function get_me(request) {
     try {
+        console.log('[http-functions]', 'GET /_functions/me start');
+        console.info('[http-functions]', 'GET /_functions/me called');
         const result = await meFromRequest(request);
+        console.log('[http-functions]', 'GET /_functions/me result', result.status);
+        console.info('[http-functions]', 'GET /_functions/me completed', {
+            ok: result.ok,
+            status: result.status
+        });
         return fromResult(result);
-    } catch (_err) {
+    } catch (err) {
+        console.error('[http-functions]', 'GET /_functions/me failed', {
+            message: err?.message || 'Unknown error'
+        });
         return withJsonHeaders(serverError({ body: jsonBody({ error: 'Internal server error' }) }));
     }
 }

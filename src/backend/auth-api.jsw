@@ -1,0 +1,199 @@
+import crypto from 'crypto';
+import wixData from 'wix-data';
+import {
+    COLLECTIONS,
+    GENERIC_LOGIN_ERROR_MESSAGE,
+    LOGIN
+} from 'backend/auth/constants';
+import { verifyPassword } from 'backend/auth/password';
+import { clearAttempts, isRateLimited, recordFailedAttempt } from 'backend/auth/loginPolicy';
+import { createSession, getSession, revokeSession } from 'backend/auth/sessionStore';
+import { normalizeEmail, validateEmail } from 'backend/auth/validators';
+
+function hashIp(ip) {
+    return crypto.createHash('sha256').update(String(ip || '')).digest('hex');
+}
+
+async function getUserByEmail(email) {
+    const result = await wixData.query(COLLECTIONS.USERS)
+        .eq('email', email)
+        .limit(1)
+        .find();
+
+    return result.items?.[0] || null;
+}
+
+function loginFailedResponse(status = 401) {
+    return {
+        ok: false,
+        status,
+        error: GENERIC_LOGIN_ERROR_MESSAGE
+    };
+}
+
+function isUserLocked(user, now = Date.now()) {
+    if (!user?.lockUntil) {
+        return false;
+    }
+
+    return new Date(user.lockUntil).getTime() > now;
+}
+
+async function clearExpiredLockIfNeeded(user, now = Date.now()) {
+    if (!user?.lockUntil) {
+        return user;
+    }
+
+    const lockUntilMs = new Date(user.lockUntil).getTime();
+    if (!Number.isFinite(lockUntilMs) || lockUntilMs > now) {
+        return user;
+    }
+
+    const updatedUser = {
+        ...user,
+        failedLoginCount: 0,
+        lockUntil: null
+    };
+
+    await wixData.update(COLLECTIONS.USERS, updatedUser);
+    return updatedUser;
+}
+
+function buildRateLimitKey(email, ip) {
+    return `${email}|${ip}`;
+}
+
+async function handleFailedPassword(user, now) {
+    const nextFailedCount = Number(user.failedLoginCount || 0) + 1;
+    const updates = {
+        failedLoginCount: nextFailedCount
+    };
+
+    if (nextFailedCount >= LOGIN.FAILED_ATTEMPTS_LOCKOUT_THRESHOLD) {
+        updates.lockUntil = new Date(now + LOGIN.LOCKOUT_MS);
+        updates.failedLoginCount = 0;
+    }
+
+    await wixData.update(COLLECTIONS.USERS, {
+        ...user,
+        ...updates
+    });
+}
+
+export async function login(emailRaw, passwordRaw) {
+    const email = normalizeEmail(emailRaw);
+    const password = String(passwordRaw || '');
+    const ip = 'web-module';
+    const rateKey = buildRateLimitKey(email, ip);
+
+    if (!validateEmail(email) || !password) {
+        return loginFailedResponse(400);
+    }
+
+    if (isRateLimited(rateKey)) {
+        return {
+            ok: false,
+            status: 429,
+            error: 'Too many login attempts. Please try again later.'
+        };
+    }
+
+    const user = await getUserByEmail(email);
+    if (!user || !user.isActive) {
+        recordFailedAttempt(rateKey);
+        return loginFailedResponse(401);
+    }
+
+    const now = Date.now();
+    const normalizedUser = await clearExpiredLockIfNeeded(user, now);
+
+    if (isUserLocked(normalizedUser, now)) {
+        recordFailedAttempt(rateKey);
+        return loginFailedResponse(401);
+    }
+
+    const passwordOk = verifyPassword(password, normalizedUser.passwordHash);
+    if (!passwordOk) {
+        recordFailedAttempt(rateKey);
+        await handleFailedPassword(normalizedUser, now);
+        return loginFailedResponse(401);
+    }
+
+    const sessionId = await createSession({
+        userId: normalizedUser._id,
+        ipHash: hashIp(ip),
+        userAgent: 'web-module',
+        now
+    });
+
+    await wixData.update(COLLECTIONS.USERS, {
+        ...normalizedUser,
+        failedLoginCount: 0,
+        lockUntil: null,
+        lastLoginAt: new Date(now)
+    });
+
+    clearAttempts(rateKey);
+
+    return {
+        ok: true,
+        status: 200,
+        user: {
+            id: normalizedUser._id,
+            email: normalizedUser.email,
+            role: normalizedUser.role || null
+        },
+        sessionId
+    };
+}
+
+export async function me(sessionId) {
+    const id = String(sessionId || '');
+    if (!id) {
+        return {
+            ok: false,
+            status: 401,
+            error: 'Unauthorized'
+        };
+    }
+
+    const activeSession = await getSession(id);
+    if (!activeSession) {
+        return {
+            ok: false,
+            status: 401,
+            error: 'Unauthorized'
+        };
+    }
+
+    const user = await wixData.get(COLLECTIONS.USERS, activeSession.userId);
+    if (!user || !user.isActive) {
+        return {
+            ok: false,
+            status: 401,
+            error: 'Unauthorized'
+        };
+    }
+
+    return {
+        ok: true,
+        status: 200,
+        user: {
+            id: user._id,
+            email: user.email,
+            role: user.role || null
+        }
+    };
+}
+
+export async function logout(sessionId) {
+    const id = String(sessionId || '');
+    if (id) {
+        await revokeSession(id);
+    }
+
+    return {
+        ok: true,
+        status: 200
+    };
+}

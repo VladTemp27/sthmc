@@ -11,6 +11,28 @@ import { clearAttempts, isRateLimited, recordFailedAttempt } from 'backend/auth/
 import { createSession, getSession, revokeSession } from 'backend/auth/sessionStore';
 import { normalizeEmail, safeString, validateEmail } from 'backend/auth/validators';
 
+function maskEmail(email) {
+    const value = String(email || '');
+    const [local = '', domain = ''] = value.split('@');
+    if (!local || !domain) {
+        return 'invalid';
+    }
+
+    const visible = local.slice(0, 2);
+    return `${visible}***@${domain}`;
+}
+
+function logAuth(event, metadata = {}) {
+    console.log('[auth]', event, metadata);
+}
+
+function logAuthError(event, error, metadata = {}) {
+    console.error('[auth]', event, {
+        ...metadata,
+        message: error?.message || 'Unknown error'
+    });
+}
+
 function hashIp(ip) {
     return crypto.createHash('sha256').update(String(ip || '')).digest('hex');
 }
@@ -182,11 +204,22 @@ export async function loginFromRequest(request) {
     const ip = getClientIp(request);
     const rateKey = buildRateLimitKey(email, ip);
 
+    logAuth('login_attempt_received', {
+        email: maskEmail(email),
+        hasPassword: Boolean(password)
+    });
+
     if (!validateEmail(email) || !password) {
+        logAuth('login_rejected_invalid_payload', {
+            email: maskEmail(email)
+        });
         return loginFailedResponse(400);
     }
 
     if (isRateLimited(rateKey)) {
+        logAuth('login_rejected_rate_limited', {
+            email: maskEmail(email)
+        });
         return {
             ok: false,
             status: 429,
@@ -197,6 +230,11 @@ export async function loginFromRequest(request) {
     const user = await getUserByEmail(email);
     if (!user || !user.isActive) {
         recordFailedAttempt(rateKey);
+        logAuth('login_rejected_user_missing_or_inactive', {
+            email: maskEmail(email),
+            hasUser: Boolean(user),
+            isActive: Boolean(user?.isActive)
+        });
         return loginFailedResponse(401);
     }
 
@@ -205,6 +243,10 @@ export async function loginFromRequest(request) {
 
     if (isUserLocked(normalizedUser, now)) {
         recordFailedAttempt(rateKey);
+        logAuth('login_rejected_user_locked', {
+            email: maskEmail(email),
+            lockUntil: normalizedUser.lockUntil
+        });
         return loginFailedResponse(401);
     }
 
@@ -212,6 +254,10 @@ export async function loginFromRequest(request) {
     if (!passwordOk) {
         recordFailedAttempt(rateKey);
         await handleFailedPassword(normalizedUser, now);
+        logAuth('login_rejected_wrong_password', {
+            email: maskEmail(email),
+            userId: normalizedUser._id
+        });
         return loginFailedResponse(401);
     }
 
@@ -233,6 +279,12 @@ export async function loginFromRequest(request) {
 
     clearAttempts(rateKey);
 
+    logAuth('login_success', {
+        email: maskEmail(normalizedUser.email),
+        userId: normalizedUser._id,
+        sessionIdPrefix: String(sessionId).slice(0, 8)
+    });
+
     return {
         ok: true,
         status: 200,
@@ -250,7 +302,18 @@ export async function loginFromRequest(request) {
 export async function logoutFromRequest(request) {
     const sessionId = getCookieValue(request, COOKIE.NAME);
     if (sessionId) {
-        await revokeSession(sessionId);
+        try {
+            await revokeSession(sessionId);
+            logAuth('logout_success', {
+                sessionIdPrefix: String(sessionId).slice(0, 8)
+            });
+        } catch (error) {
+            logAuthError('logout_failed', error, {
+                sessionIdPrefix: String(sessionId).slice(0, 8)
+            });
+        }
+    } else {
+        logAuth('logout_without_session_cookie');
     }
 
     return {
@@ -264,6 +327,7 @@ export async function logoutFromRequest(request) {
 export async function meFromRequest(request) {
     const sessionId = getCookieValue(request, COOKIE.NAME);
     if (!sessionId) {
+        logAuth('me_unauthorized_no_cookie');
         return {
             ok: false,
             status: 401,
@@ -273,6 +337,9 @@ export async function meFromRequest(request) {
 
     const session = await getSession(sessionId);
     if (!session) {
+        logAuth('me_unauthorized_invalid_session', {
+            sessionIdPrefix: String(sessionId).slice(0, 8)
+        });
         return {
             ok: false,
             status: 401,
@@ -282,6 +349,9 @@ export async function meFromRequest(request) {
 
     const user = await wixData.get(COLLECTIONS.USERS, session.userId);
     if (!user || !user.isActive) {
+        logAuth('me_unauthorized_user_missing_or_inactive', {
+            userId: session.userId
+        });
         return {
             ok: false,
             status: 401,
