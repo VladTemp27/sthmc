@@ -1,7 +1,7 @@
 {
   "web-methods": {
-    "*": {
-      "*": {
+    "backend/patients.jsw": {
+      "savePatient": {
         "siteOwner": {
           "invoke": true
         },
@@ -9,7 +9,20 @@
           "invoke": true
         },
         "anonymous": {
+          "invoke": false
+        }
+      }
+    },
+    "*": {
+      "*": {
+        "siteOwner": {
           "invoke": true
+        },
+        "siteMember": {
+          "invoke": false
+        },
+        "anonymous": {
+          "invoke": false
         }
       }
     },

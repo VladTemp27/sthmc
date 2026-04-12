@@ -1,0 +1,69 @@
+import wixData from 'wix-data'
+
+import { validateAndNormalizePatientPayload } from 'backend/patientValidation'
+
+const PATIENTS_COLLECTION_ID = 'Patients'
+const LOG_PREFIX = '[patients.savePatient]'
+
+export async function savePatient(payload) {
+  console.log(`${LOG_PREFIX} Received payload for save.`, {
+    hasFirstName: Boolean(payload && payload.firstName),
+    hasLastName: Boolean(payload && payload.lastName),
+    hasBirthday: Boolean(payload && payload.birthday),
+    hasAge: Boolean(payload && payload.age),
+    hasSex: Boolean(payload && payload.sex),
+    hasPhone: Boolean(payload && payload.phone),
+    hasEmergencyContactName: Boolean(payload && payload.emergencyContactName),
+    hasEmergencyContactPhone: Boolean(payload && payload.emergencyContactPhone)
+  })
+
+  const validation = validateAndNormalizePatientPayload(payload)
+
+  if (!validation.ok) {
+    console.log(`${LOG_PREFIX} Validation failed.`, validation.errors)
+    return {
+      ok: false,
+      type: 'validation',
+      message: 'Please fix the highlighted fields and try again.',
+      fields: validation.errors
+    }
+  }
+
+  const { data } = validation
+  console.log(`${LOG_PREFIX} Validation passed. Preparing insert.`)
+
+  const record = {
+    firstName: data.firstName,
+    lastName: data.lastName,
+    birthday: data.birthday,
+    age: data.age,
+    sex: data.sex,
+    address: data.address,
+    phone: data.phone,
+    emergencyContactName: data.emergencyContactName,
+    emergencyContactPhone: data.emergencyContactPhone,
+    sourceForm: 'form2',
+    createdAt: new Date()
+  }
+
+  try {
+    const insertedRecord = await wixData.insert(PATIENTS_COLLECTION_ID, record)
+    console.log(`${LOG_PREFIX} Insert success.`, { patientId: insertedRecord._id })
+
+    return {
+      ok: true,
+      patientId: insertedRecord._id
+    }
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Insert failed.`, {
+      message: error?.message,
+      stack: error?.stack
+    })
+
+    return {
+      ok: false,
+      type: 'server',
+      message: 'Unable to save patient record. Please try again later.'
+    }
+  }
+}
