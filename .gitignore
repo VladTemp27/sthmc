@@ -4,3 +4,9 @@ node_modules/
 .idea/
 .wix/
 jsconfig.json
+.agents/
+.claude/
+.CLAUDE.md
+.AGENTS.md
+
+
