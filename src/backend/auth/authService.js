@@ -82,6 +82,26 @@ function isUserLocked(user, now = Date.now()) {
     return new Date(user.lockUntil).getTime() > now;
 }
 
+async function clearExpiredLockIfNeeded(user, now = Date.now()) {
+    if (!user?.lockUntil) {
+        return user;
+    }
+
+    const lockUntilMs = new Date(user.lockUntil).getTime();
+    if (!Number.isFinite(lockUntilMs) || lockUntilMs > now) {
+        return user;
+    }
+
+    const updatedUser = {
+        ...user,
+        failedLoginCount: 0,
+        lockUntil: null
+    };
+
+    await wixData.update(COLLECTIONS.USERS, updatedUser);
+    return updatedUser;
+}
+
 function buildRateLimitKey(email, ip) {
     return `${email}|${ip}`;
 }
@@ -181,15 +201,17 @@ export async function loginFromRequest(request) {
     }
 
     const now = Date.now();
-    if (isUserLocked(user, now)) {
+    const normalizedUser = await clearExpiredLockIfNeeded(user, now);
+
+    if (isUserLocked(normalizedUser, now)) {
         recordFailedAttempt(rateKey);
         return loginFailedResponse(401);
     }
 
-    const passwordOk = verifyPassword(password, user.passwordHash);
+    const passwordOk = verifyPassword(password, normalizedUser.passwordHash);
     if (!passwordOk) {
         recordFailedAttempt(rateKey);
-        await handleFailedPassword(user, now);
+        await handleFailedPassword(normalizedUser, now);
         return loginFailedResponse(401);
     }
 
@@ -203,7 +225,7 @@ export async function loginFromRequest(request) {
     });
 
     await wixData.update(COLLECTIONS.USERS, {
-        ...user,
+        ...normalizedUser,
         failedLoginCount: 0,
         lockUntil: null,
         lastLoginAt: new Date(now)
@@ -216,9 +238,9 @@ export async function loginFromRequest(request) {
         status: 200,
         data: {
             user: {
-                id: user._id,
-                email: user.email,
-                role: user.role || null
+                id: normalizedUser._id,
+                email: normalizedUser.email,
+                role: normalizedUser.role || null
             }
         },
         cookie: createSetCookieHeader(sessionId, true)
