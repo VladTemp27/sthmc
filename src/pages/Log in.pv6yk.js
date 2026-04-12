@@ -1,7 +1,7 @@
 import wixLocation from 'wix-location';
 
 const LOGIN_ENDPOINT = '/_functions/login';
-const DEFAULT_SUCCESS_PATH = '/patient-chart';
+const DEFAULT_SUCCESS_PATH = '/homepage';
 const GENERIC_ERROR = 'Invalid email or password.';
 
 function getValueIfExists(selector) {

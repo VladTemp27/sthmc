@@ -1,10 +1,26 @@
-// API Reference: https://www.wix.com/velo/reference/api-overview/introduction
-// “Hello, World!” Example: https://learn-code.wix.com/en/article/hello-world
+import wixLocation from 'wix-location';
+
+const ME_ENDPOINT = '/_functions/me';
+const LOGIN_PATH = '/log-in';
+
+async function enforceAuthGuard() {
+    try {
+        const response = await fetch(ME_ENDPOINT, {
+            method: 'GET',
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            return;
+        }
+    } catch (_err) {
+        // Fail closed and redirect to login.
+    }
+
+    const currentPath = wixLocation.path?.length ? `/${wixLocation.path.join('/')}` : '/add-new-patient';
+    wixLocation.to(`${LOGIN_PATH}?redirect=${encodeURIComponent(currentPath)}`);
+}
 
 $w.onReady(function () {
-    // Write your JavaScript here
-
-    // To select an element by ID use: $w('#elementID')
-
-    // Click 'Preview' to run your code
+    enforceAuthGuard();
 });
