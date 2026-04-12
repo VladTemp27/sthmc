@@ -112,16 +112,21 @@ function wireFormHandlers() {
     }
 
     if (!bound) {
-        try {
-            const maybeForm = $w('#loginForm');
-            if (typeof maybeForm.onSubmit === 'function') {
-                maybeForm.onSubmit((event) => {
-                    event.preventDefault();
-                    submitLogin();
-                });
+        const formSelectors = ['#loginform', '#loginForm'];
+
+        for (const selector of formSelectors) {
+            try {
+                const maybeForm = $w(selector);
+                if (typeof maybeForm.onSubmit === 'function') {
+                    maybeForm.onSubmit((event) => {
+                        event.preventDefault();
+                        submitLogin();
+                    });
+                    break;
+                }
+            } catch (_err) {
+                // Try next known selector.
             }
-        } catch (_err) {
-            // Safe fallback when page doesn't expose expected IDs.
         }
     }
 }

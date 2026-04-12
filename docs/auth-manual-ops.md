@@ -48,6 +48,6 @@ Current frontend code attempts these IDs:
 - Inputs: `#emailInput`, `#passwordInput`
 - Buttons: `#loginButton`, `#submitButton`, `#signInButton`
 - Error text: `#errorText`
-- Optional form container: `#loginForm`
+- Optional form container: `#loginform` (and fallback `#loginForm`)
 
 If your actual IDs differ, rename elements in the editor or update `src/pages/Log in.pv6yk.js` accordingly.
