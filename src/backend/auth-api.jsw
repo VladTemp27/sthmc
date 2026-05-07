@@ -200,7 +200,9 @@ export async function login(emailRaw, passwordRaw) {
         return {
             ok: false,
             status: 500,
-            error: 'Unable to log in right now. Please try again.'
+            error: 'Unable to log in right now. Please try again.',
+            debugStage: stage || 'unknown',
+            debugCode: 'LOGIN_500'
         };
     }
 }
@@ -262,7 +264,8 @@ export async function me(sessionId) {
         return {
             ok: false,
             status: 500,
-            error: 'Unable to verify session right now.'
+            error: 'Unable to verify session right now.',
+            debugCode: 'ME_500'
         };
     }
 }
@@ -289,7 +292,8 @@ export async function logout(sessionId) {
         return {
             ok: false,
             status: 500,
-            error: 'Unable to log out right now.'
+            error: 'Unable to log out right now.',
+            debugCode: 'LOGOUT_500'
         };
     }
 }
