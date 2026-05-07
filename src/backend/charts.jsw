@@ -1,0 +1,258 @@
+import wixData from 'wix-data'
+
+const PATIENTS_COLLECTION_ID = 'Patients'
+const CHARTS_COLLECTION_ID = 'Charts'
+const LOG_PREFIX = '[charts]'
+
+function toIdString(value) {
+  return String(value || '').trim()
+}
+
+function toNullableNumber(value) {
+  if (value == null || value === '') {
+    return null
+  }
+
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
+}
+
+function toNullableText(value) {
+  const text = String(value == null ? '' : value).trim()
+  return text || null
+}
+
+function toNullableDate(value) {
+  if (!value) {
+    return null
+  }
+
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+export async function createChartForPatient(patientId) {
+  const id = toIdString(patientId)
+  console.log(`${LOG_PREFIX} createChartForPatient called.`, { patientId: id || '(missing)' })
+
+  if (!id) {
+    return {
+      ok: false,
+      type: 'validation',
+      message: 'Patient ID is required.'
+    }
+  }
+
+  try {
+    const patient = await wixData.get(PATIENTS_COLLECTION_ID, id)
+    if (!patient || !patient._id) {
+      return {
+        ok: false,
+        type: 'not-found',
+        message: 'Patient not found.'
+      }
+    }
+
+    const activeChartsResult = await wixData.query(CHARTS_COLLECTION_ID).eq('patientId', id).eq('isActive', true).limit(100).find()
+    const activeCharts = activeChartsResult.items || []
+    console.log(`${LOG_PREFIX} Active charts found before create.`, { patientId: id, activeCount: activeCharts.length })
+
+    await Promise.all(
+      activeCharts.map((chart) =>
+        wixData.update(CHARTS_COLLECTION_ID, {
+          ...chart,
+          isActive: false,
+          deactivatedAt: new Date()
+        })
+      )
+    )
+
+    const inserted = await wixData.insert(CHARTS_COLLECTION_ID, {
+      patientId: id,
+      isActive: true,
+      status: 'open',
+      createdAt: new Date(),
+      deactivatedAt: null
+    })
+    console.log(`${LOG_PREFIX} Chart created successfully.`, { patientId: id, chartId: inserted._id })
+
+    return {
+      ok: true,
+      chartId: inserted._id,
+      patientId: id
+    }
+  } catch (error) {
+    console.error(`${LOG_PREFIX} create_chart_fail`, {
+      message: error?.message,
+      stack: error?.stack,
+      patientId: id
+    })
+
+    return {
+      ok: false,
+      type: 'server',
+      message: 'Unable to create chart. Please try again later.'
+    }
+  }
+}
+
+export async function getChartContext(patientId, chartId) {
+  const patientIdValue = toIdString(patientId)
+  const chartIdValue = toIdString(chartId)
+  console.log(`${LOG_PREFIX} getChartContext called.`, { patientId: patientIdValue || '(missing)', chartId: chartIdValue || '(missing)' })
+
+  if (!patientIdValue || !chartIdValue) {
+    return {
+      ok: false,
+      type: 'validation',
+      message: 'Patient ID and Chart ID are required.'
+    }
+  }
+
+  try {
+    const chart = await wixData.get(CHARTS_COLLECTION_ID, chartIdValue)
+    if (!chart || !chart._id) {
+      return {
+        ok: false,
+        type: 'not-found',
+        message: 'Chart not found.'
+      }
+    }
+
+    if (toIdString(chart.patientId) !== patientIdValue) {
+      return {
+        ok: false,
+        type: 'conflict',
+        message: 'Chart does not belong to the selected patient.'
+      }
+    }
+
+    const patient = await wixData.get(PATIENTS_COLLECTION_ID, patientIdValue)
+    if (!patient || !patient._id) {
+      return {
+        ok: false,
+        type: 'not-found',
+        message: 'Patient not found.'
+      }
+    }
+
+    return {
+      ok: true,
+      patient: {
+        id: patient._id,
+        firstName: patient.firstName || '',
+        lastName: patient.lastName || '',
+        age: Number.isFinite(patient.age) ? patient.age : null,
+        sex: patient.sex || ''
+      },
+      chart: {
+        id: chart._id,
+        patientId: toIdString(chart.patientId),
+        isActive: Boolean(chart.isActive),
+        status: chart.status || '',
+        createdAt: chart.createdAt || null,
+        updatedAt: chart.updatedAt || null,
+        weight: toNullableNumber(chart.weight),
+        height: toNullableNumber(chart.height),
+        temperature: toNullableNumber(chart.temperature),
+        bp: toNullableText(chart.bp),
+        heartRate: toNullableNumber(chart.heartRate),
+        respiratoryRate: toNullableNumber(chart.respiratoryRate),
+        department: toNullableText(chart.department),
+        findings: toNullableText(chart.findings),
+        medicationsAd: toNullableText(chart.medicationsAd),
+        chartDate: chart.chartDate || null
+      }
+    }
+    
+  } catch (error) {
+    console.error(`${LOG_PREFIX} get_chart_context_fail`, {
+      message: error?.message,
+      stack: error?.stack,
+      patientId: patientIdValue,
+      chartId: chartIdValue
+    })
+
+    return {
+      ok: false,
+      type: 'server',
+      message: 'Unable to load chart context. Please try again later.'
+    }
+  }
+}
+
+export async function updateChartData(patientId, chartId, payload = {}) {
+  const patientIdValue = toIdString(patientId)
+  const chartIdValue = toIdString(chartId)
+  console.log(`${LOG_PREFIX} updateChartData called.`, {
+    patientId: patientIdValue || '(missing)',
+    chartId: chartIdValue || '(missing)',
+    payloadKeys: Object.keys(payload || {})
+  })
+
+  if (!patientIdValue || !chartIdValue) {
+    return {
+      ok: false,
+      type: 'validation',
+      message: 'Patient ID and Chart ID are required.'
+    }
+  }
+
+  try {
+    const chart = await wixData.get(CHARTS_COLLECTION_ID, chartIdValue)
+    if (!chart || !chart._id) {
+      return {
+        ok: false,
+        type: 'not-found',
+        message: 'Chart not found.'
+      }
+    }
+
+    if (toIdString(chart.patientId) !== patientIdValue) {
+      return {
+        ok: false,
+        type: 'conflict',
+        message: 'Chart does not belong to the selected patient.'
+      }
+    }
+
+    const updated = await wixData.update(CHARTS_COLLECTION_ID, {
+      ...chart,
+      weight: toNullableNumber(payload.weight),
+      height: toNullableNumber(payload.height),
+      temperature: toNullableNumber(payload.temperature),
+      bp: toNullableText(payload.bp),
+      heartRate: toNullableNumber(payload.heartRate),
+      respiratoryRate: toNullableNumber(payload.respiratoryRate),
+      department: toNullableText(payload.department),
+      findings: toNullableText(payload.findings),
+      medicationsAd: toNullableText(payload.medicationsAd),
+      chartDate: toNullableDate(payload.chartDate),
+      updatedAt: new Date()
+    })
+    console.log(`${LOG_PREFIX} Chart updated successfully.`, {
+      patientId: patientIdValue,
+      chartId: updated._id,
+      updatedAt: updated.updatedAt || null
+    })
+
+    return {
+      ok: true,
+      chartId: updated._id,
+      updatedAt: updated.updatedAt || null
+    }
+  } catch (error) {
+    console.error(`${LOG_PREFIX} update_chart_fail`, {
+      message: error?.message,
+      stack: error?.stack,
+      patientId: patientIdValue,
+      chartId: chartIdValue
+    })
+
+    return {
+      ok: false,
+      type: 'server',
+      message: 'Unable to update chart data. Please try again later.'
+    }
+  }
+}

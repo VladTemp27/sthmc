@@ -1,0 +1,183 @@
+import wixData from 'wix-data'
+
+const PATIENTS_COLLECTION_ID = 'Patients'
+const CHARTS_COLLECTION_ID = 'Charts'
+const LOG_PREFIX = '[homepage]'
+
+function toIdString(value) {
+  return String(value || '').trim()
+}
+
+function formatPatientName(patient) {
+  const firstName = String(patient?.firstName || '').trim()
+  const lastName = String(patient?.lastName || '').trim()
+  const fullName = [firstName, lastName].filter(Boolean).join(' ').trim()
+  return fullName || 'Unknown Patient'
+}
+
+function toDateOrNull(value) {
+  if (!value) {
+    return null
+  }
+
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function getPatientCreatedAt(patient) {
+  return toDateOrNull(patient?.createdAt || patient?._createdDate)
+}
+
+function getChartActivityAt(chart) {
+  return toDateOrNull(chart?.updatedAt || chart?.createdAt || chart?._updatedDate || chart?._createdDate)
+}
+
+export async function getHomepageSummary() {
+  console.log(`${LOG_PREFIX} get_homepage_summary_start`)
+  try {
+    const [patientsResult, chartsResult, activeChartsResult] = await Promise.all([
+      wixData.query(PATIENTS_COLLECTION_ID).limit(1).count(),
+      wixData.query(CHARTS_COLLECTION_ID).limit(1).count(),
+      wixData.query(CHARTS_COLLECTION_ID).eq('isActive', true).limit(1).count()
+    ])
+
+    const summary = {
+      ok: true,
+      totalPatients: Number(patientsResult || 0),
+      totalConsultations: Number(chartsResult || 0),
+      activeCharts: Number(activeChartsResult || 0)
+    }
+    console.log(`${LOG_PREFIX} get_homepage_summary_success`, {
+      totalPatients: summary.totalPatients,
+      totalConsultations: summary.totalConsultations,
+      activeCharts: summary.activeCharts
+    })
+    return summary
+  } catch (error) {
+    console.error(`${LOG_PREFIX} get_homepage_summary_fail`, {
+      message: error?.message,
+      stack: error?.stack
+    })
+
+    return {
+      ok: false,
+      message: 'Unable to load homepage summary.'
+    }
+  }
+}
+
+export async function getRecentConsultations(limit = 2) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 2, 10))
+  console.log(`${LOG_PREFIX} get_recent_consultations_start`, { requestedLimit: limit, safeLimit })
+
+  try {
+    const [patientsResult, chartsResult] = await Promise.all([
+      wixData.query(PATIENTS_COLLECTION_ID).descending('createdAt').limit(1000).find(),
+      wixData.query(CHARTS_COLLECTION_ID).descending('createdAt').limit(1000).find()
+    ])
+
+    const patients = patientsResult.items || []
+    const charts = chartsResult.items || []
+    console.log(`${LOG_PREFIX} get_recent_consultations_loaded`, { chartCount: charts.length, patientCount: patients.length })
+
+    const patientsById = new Map()
+    patients.forEach((patient) => {
+      const patientId = toIdString(patient._id)
+      if (patientId) {
+        patientsById.set(patientId, patient)
+      }
+    })
+
+    const latestChartByPatientId = new Map()
+    charts.forEach((chart) => {
+      const patientId = toIdString(chart.patientId)
+      if (!patientId) {
+        return
+      }
+
+      const current = latestChartByPatientId.get(patientId)
+      const currentAt = getChartActivityAt(current)
+      const nextAt = getChartActivityAt(chart)
+      if (!current || (nextAt && (!currentAt || nextAt > currentAt))) {
+        latestChartByPatientId.set(patientId, chart)
+      }
+    })
+
+    const candidatesByPatientId = new Map()
+
+    patients.forEach((patient) => {
+      const patientId = toIdString(patient._id)
+      if (!patientId) {
+        return
+      }
+
+      const latestChart = latestChartByPatientId.get(patientId) || null
+      const patientAt = getPatientCreatedAt(patient)
+      const chartAt = getChartActivityAt(latestChart)
+      const activityAt = chartAt && (!patientAt || chartAt > patientAt) ? chartAt : patientAt
+
+      if (!activityAt) {
+        return
+      }
+
+      candidatesByPatientId.set(patientId, {
+        patientId,
+        patientName: formatPatientName(patient),
+        patientAge: Number.isFinite(patient?.age) ? patient.age : null,
+        patientSex: String(patient?.sex || '').trim(),
+        chartId: latestChart ? toIdString(latestChart._id) : '',
+        createdAt: activityAt,
+        status: latestChart ? String(latestChart.status || '').trim() || 'open' : 'new-patient',
+        source: latestChart ? 'chart' : 'patient'
+      })
+    })
+
+    latestChartByPatientId.forEach((chart, patientId) => {
+      if (candidatesByPatientId.has(patientId)) {
+        return
+      }
+
+      const chartAt = getChartActivityAt(chart)
+      if (!chartAt) {
+        return
+      }
+
+      const patient = patientsById.get(patientId)
+      candidatesByPatientId.set(patientId, {
+        patientId,
+        patientName: formatPatientName(patient),
+        patientAge: Number.isFinite(patient?.age) ? patient.age : null,
+        patientSex: String(patient?.sex || '').trim(),
+        chartId: toIdString(chart._id),
+        createdAt: chartAt,
+        status: String(chart.status || '').trim() || 'open',
+        source: 'chart'
+      })
+    })
+
+    const items = [...candidatesByPatientId.values()]
+      .sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return bTime - aTime
+      })
+      .slice(0, safeLimit)
+
+    console.log(`${LOG_PREFIX} get_recent_consultations_success`, { count: items.length })
+
+    return {
+      ok: true,
+      items
+    }
+  } catch (error) {
+    console.error(`${LOG_PREFIX} get_recent_consultations_fail`, {
+      message: error?.message,
+      stack: error?.stack
+    })
+
+    return {
+      ok: false,
+      message: 'Unable to load recent consultations.'
+    }
+  }
+}

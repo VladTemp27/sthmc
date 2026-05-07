@@ -5,6 +5,10 @@ import { validateAndNormalizePatientPayload } from 'backend/patientValidation'
 const PATIENTS_COLLECTION_ID = 'Patients'
 const LOG_PREFIX = '[patients.savePatient]'
 
+function toIdString(value) {
+  return String(value || '').trim()
+}
+
 export async function savePatient(payload) {
   console.log(`${LOG_PREFIX} Received payload for save.`, {
     hasFirstName: Boolean(payload && payload.firstName),
@@ -64,6 +68,58 @@ export async function savePatient(payload) {
       ok: false,
       type: 'server',
       message: 'Unable to save patient record. Please try again later.'
+    }
+  }
+}
+
+export async function getPatientById(patientId) {
+  const id = toIdString(patientId)
+
+  if (!id) {
+    return {
+      ok: false,
+      type: 'validation',
+      message: 'Patient ID is required.'
+    }
+  }
+
+  try {
+    const patient = await wixData.get(PATIENTS_COLLECTION_ID, id)
+
+    if (!patient || !patient._id) {
+      return {
+        ok: false,
+        type: 'not-found',
+        message: 'Patient not found.'
+      }
+    }
+
+    return {
+      ok: true,
+      patient: {
+        id: patient._id,
+        firstName: patient.firstName || '',
+        lastName: patient.lastName || '',
+        birthday: patient.birthday || null,
+        age: Number.isFinite(patient.age) ? patient.age : null,
+        sex: patient.sex || '',
+        address: patient.address || '',
+        phone: patient.phone || '',
+        emergencyContactName: patient.emergencyContactName || '',
+        emergencyContactPhone: patient.emergencyContactPhone || ''
+      }
+    }
+  } catch (error) {
+    console.error('[patients.getPatientById] Failed to fetch patient.', {
+      message: error?.message,
+      stack: error?.stack,
+      patientId: id
+    })
+
+    return {
+      ok: false,
+      type: 'server',
+      message: 'Unable to load patient details. Please try again later.'
     }
   }
 }
