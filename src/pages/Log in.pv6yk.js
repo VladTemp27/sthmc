@@ -178,7 +178,9 @@ async function submitLogin() {
 
         console.log('[login-page] login response received', {
             ok: result?.ok,
-            status: result?.status
+            status: result?.status,
+            debugCode: result?.debugCode || null,
+            debugStage: result?.debugStage || null
         });
 
         if (!result?.ok) {
@@ -187,6 +189,13 @@ async function submitLogin() {
                 : result?.status === 429 && result?.error
                     ? String(result.error)
                     : GENERIC_ERROR;
+            if (result?.status && result.status >= 500) {
+                console.error('[login-page] login debug details', {
+                    debugCode: result?.debugCode || null,
+                    debugStage: result?.debugStage || null,
+                    backendMessage: result?.error || null
+                });
+            }
             await showErrorMessage(message);
             return;
         }
