@@ -23,6 +23,28 @@
           "invoke": false
         }
       },
+      "getChartsForPatient": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "getLatestChartForPatient": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
       "updateChartData": {
         "siteOwner": {
           "invoke": true
@@ -72,6 +94,17 @@
         }
       },
       "getRecentConsultations": {
+        "siteOwner": {
+          "invoke": true
+        },
+        "siteMember": {
+          "invoke": true
+        },
+        "anonymous": {
+          "invoke": false
+        }
+      },
+      "searchPatientsForHomepage": {
         "siteOwner": {
           "invoke": true
         },

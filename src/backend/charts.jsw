@@ -181,6 +181,110 @@ export async function getChartContext(patientId, chartId) {
   }
 }
 
+export async function getChartsForPatient(patientId, limit = 50) {
+  const patientIdValue = toIdString(patientId)
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 100))
+  console.log(`${LOG_PREFIX} getChartsForPatient called.`, { patientId: patientIdValue || '(missing)', safeLimit })
+
+  if (!patientIdValue) {
+    return {
+      ok: false,
+      type: 'validation',
+      message: 'Patient ID is required.'
+    }
+  }
+
+  try {
+    const result = await wixData
+      .query(CHARTS_COLLECTION_ID)
+      .eq('patientId', patientIdValue)
+      .descending('createdAt')
+      .limit(safeLimit)
+      .find()
+
+    const items = (result.items || []).map((chart) => ({
+      chartId: toIdString(chart._id),
+      patientId: toIdString(chart.patientId),
+      department: toNullableText(chart.department),
+      chartDate: chart.chartDate || chart.createdAt || null,
+      createdAt: chart.createdAt || null,
+      updatedAt: chart.updatedAt || null,
+      status: toNullableText(chart.status) || 'open',
+      isActive: Boolean(chart.isActive)
+    }))
+
+    console.log(`${LOG_PREFIX} get_charts_for_patient_success`, { patientId: patientIdValue, count: items.length })
+    return {
+      ok: true,
+      items
+    }
+  } catch (error) {
+    console.error(`${LOG_PREFIX} get_charts_for_patient_fail`, {
+      message: error?.message,
+      stack: error?.stack,
+      patientId: patientIdValue
+    })
+
+    return {
+      ok: false,
+      type: 'server',
+      message: 'Unable to load charts for this patient.'
+    }
+  }
+}
+
+export async function getLatestChartForPatient(patientId) {
+  const patientIdValue = toIdString(patientId)
+  console.log(`${LOG_PREFIX} getLatestChartForPatient called.`, { patientId: patientIdValue || '(missing)' })
+
+  if (!patientIdValue) {
+    return {
+      ok: false,
+      type: 'validation',
+      message: 'Patient ID is required.'
+    }
+  }
+
+  try {
+    const result = await wixData
+      .query(CHARTS_COLLECTION_ID)
+      .eq('patientId', patientIdValue)
+      .descending('updatedAt')
+      .descending('createdAt')
+      .limit(1)
+      .find()
+
+    const latest = (result.items || [])[0]
+    if (!latest || !latest._id) {
+      return {
+        ok: false,
+        type: 'not-found',
+        message: 'No charts found for this patient.'
+      }
+    }
+
+    const chartId = toIdString(latest._id)
+    console.log(`${LOG_PREFIX} get_latest_chart_for_patient_success`, { patientId: patientIdValue, chartId })
+    return {
+      ok: true,
+      patientId: patientIdValue,
+      chartId
+    }
+  } catch (error) {
+    console.error(`${LOG_PREFIX} get_latest_chart_for_patient_fail`, {
+      message: error?.message,
+      stack: error?.stack,
+      patientId: patientIdValue
+    })
+
+    return {
+      ok: false,
+      type: 'server',
+      message: 'Unable to load latest chart for this patient.'
+    }
+  }
+}
+
 export async function updateChartData(patientId, chartId, payload = {}) {
   const patientIdValue = toIdString(patientId)
   const chartIdValue = toIdString(chartId)

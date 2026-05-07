@@ -1,10 +1,50 @@
-// API Reference: https://www.wix.com/velo/reference/api-overview/introduction
-// “Hello, World!” Example: https://learn-code.wix.com/en/article/hello-world
+import wixLocation from 'wix-location';
+import { session } from 'wix-storage';
+import { me as meViaWebModule } from 'backend/auth-api';
 
-$w.onReady(function () {
-    // Write your JavaScript here
+const SESSION_KEY = 'custom_auth_session_id';
+const LOGIN_PATH = '/log-in';
+const HOME_PATH = '/homepage';
+const LOG_PREFIX = '[master-page]';
 
-    // To select an element by ID use: $w('#elementID')
+async function isAuthenticated() {
+    try {
+        const sessionId = session.getItem(SESSION_KEY);
+        const result = await meViaWebModule(sessionId);
+        return Boolean(result?.ok);
+    } catch (_err) {
+        console.error(`${LOG_PREFIX} auth_check_error`, { message: _err?.message });
+        return false;
+    }
+}
 
-    // Click 'Preview' to run your code
+function getLoginButton() {
+    try {
+        return $w('#button1');
+    } catch (_err) {
+        return null;
+    }
+}
+
+$w.onReady(async function () {
+    const button = getLoginButton();
+    if (!button) {
+        return;
+    }
+
+    const authed = await isAuthenticated();
+    const targetPath = authed ? HOME_PATH : LOGIN_PATH;
+    const label = authed ? 'Home' : 'Log In';
+
+    if ('label' in button) {
+        button.label = label;
+    }
+
+    if ('onClick' in button) {
+        button.onClick(() => {
+            wixLocation.to(targetPath);
+        });
+    }
+
+    console.log(`${LOG_PREFIX} nav_button_state`, { authed, label, targetPath });
 });

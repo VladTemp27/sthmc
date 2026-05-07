@@ -1,11 +1,10 @@
 import wixLocation from 'wix-location';
 import { session } from 'wix-storage';
 import { me as meViaWebModule } from 'backend/auth-api';
-import { getChartContext, updateChartData } from 'backend/charts';
+import { getChartContext } from 'backend/charts';
 
 const LOGIN_PATH = '/log-in';
 const SESSION_KEY = 'custom_auth_session_id';
-const SAVE_DEBOUNCE_MS = 500;
 const LOG_PREFIX = '[page.patient-chart]';
 const FIELD_IDS = {
     weight: '#weight',
@@ -66,44 +65,6 @@ function field(id) {
     return getElement([id]);
 }
 
-function toNumberOrNull(value) {
-    if (value == null || value === '') {
-        return null;
-    }
-
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-}
-
-function toTextOrNull(value) {
-    const text = String(value == null ? '' : value).trim();
-    return text || null;
-}
-
-function toDateOrNull(value) {
-    if (!value) {
-        return null;
-    }
-
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function buildPayloadFromForm() {
-    return {
-        weight: toNumberOrNull(field(FIELD_IDS.weight)?.value),
-        height: toNumberOrNull(field(FIELD_IDS.height)?.value),
-        temperature: toNumberOrNull(field(FIELD_IDS.temperature)?.value),
-        bp: toTextOrNull(field(FIELD_IDS.bp)?.value),
-        heartRate: toNumberOrNull(field(FIELD_IDS.heartRate)?.value),
-        respiratoryRate: toNumberOrNull(field(FIELD_IDS.respiratoryRate)?.value),
-        department: toTextOrNull(field(FIELD_IDS.department)?.value),
-        findings: toTextOrNull(field(FIELD_IDS.findings)?.value),
-        medicationsAd: toTextOrNull(field(FIELD_IDS.medicationsAd)?.value),
-        chartDate: toDateOrNull(field(FIELD_IDS.chartDate)?.value)
-    };
-}
-
 function setFieldValue(id, value) {
     const el = field(id);
     if (!el || !('value' in el)) {
@@ -111,6 +72,17 @@ function setFieldValue(id, value) {
     }
 
     el.value = value == null ? '' : value;
+}
+
+function disableField(id) {
+    const el = field(id);
+    if (!el) {
+        return;
+    }
+
+    if ('disable' in el) {
+        el.disable();
+    }
 }
 
 function populateForm(chart) {
@@ -130,55 +102,12 @@ function populateForm(chart) {
     }
 }
 
-function registerAutoSave(patientId, chartId) {
-    let saveTimer = null;
-    let isSaving = false;
-    let pendingSave = false;
+function lockDepartmentField() {
+    disableField(FIELD_IDS.department);
+}
 
-    const scheduleSave = () => {
-        if (saveTimer) {
-            clearTimeout(saveTimer);
-        }
-
-        saveTimer = setTimeout(async () => {
-            if (isSaving) {
-                pendingSave = true;
-                return;
-            }
-
-            isSaving = true;
-            const payload = buildPayloadFromForm();
-            logInfo('autosave_start', { patientId, chartId, payloadKeys: Object.keys(payload || {}) });
-            const result = await updateChartData(patientId, chartId, payload);
-            isSaving = false;
-
-            if (!result?.ok) {
-                logError('autosave_fail', { patientId, chartId, message: result?.message || 'Unable to save chart data.' });
-            } else {
-                logInfo('autosave_success', { patientId, chartId, updatedAt: result?.updatedAt || null });
-            }
-
-            if (pendingSave) {
-                pendingSave = false;
-                scheduleSave();
-            }
-        }, SAVE_DEBOUNCE_MS);
-    };
-
-    Object.values(FIELD_IDS).forEach((id) => {
-        const el = field(id);
-        if (!el) {
-            return;
-        }
-
-        if ('onInput' in el) {
-            el.onInput(scheduleSave);
-        }
-
-        if ('onChange' in el) {
-            el.onChange(scheduleSave);
-        }
-    });
+function lockAllFieldsReadOnly() {
+    Object.values(FIELD_IDS).forEach((id) => disableField(id));
 }
 
 $w.onReady(async function () {
@@ -208,8 +137,9 @@ $w.onReady(async function () {
         }
 
         populateForm(result.chart || {});
-        registerAutoSave(patientId, chartId);
-        logInfo('chart_ready_autosave_enabled', { patientId, chartId });
+        lockAllFieldsReadOnly();
+        lockDepartmentField();
+        logInfo('chart_ready_read_only', { patientId, chartId });
     } catch (_err) {
         logError('chart_load_error', { patientId, chartId, message: _err?.message || 'Unknown error' });
     }

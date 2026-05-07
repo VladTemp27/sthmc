@@ -181,3 +181,71 @@ export async function getRecentConsultations(limit = 2) {
     }
   }
 }
+
+export async function searchPatientsForHomepage(query = '', limit = 20) {
+  const q = String(query || '').trim()
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 50))
+  console.log(`${LOG_PREFIX} search_patients_start`, { query: q, safeLimit })
+
+  if (!q) {
+    return {
+      ok: true,
+      items: []
+    }
+  }
+
+  try {
+    const byFirstName = await wixData
+      .query(PATIENTS_COLLECTION_ID)
+      .contains('firstName', q)
+      .descending('createdAt')
+      .limit(safeLimit)
+      .find()
+
+    const byLastName = await wixData
+      .query(PATIENTS_COLLECTION_ID)
+      .contains('lastName', q)
+      .descending('createdAt')
+      .limit(safeLimit)
+      .find()
+
+    const patientMap = new Map()
+    ;[...(byFirstName.items || []), ...(byLastName.items || [])].forEach((patient) => {
+      const patientId = toIdString(patient?._id)
+      if (!patientId) {
+        return
+      }
+      if (!patientMap.has(patientId)) {
+        patientMap.set(patientId, patient)
+      }
+    })
+
+    const items = [...patientMap.values()].slice(0, safeLimit).map((patient) => ({
+      patientId: toIdString(patient._id),
+      patientName: formatPatientName(patient),
+      patientAge: Number.isFinite(patient?.age) ? patient.age : null,
+      patientSex: String(patient?.sex || '').trim(),
+      chartId: '',
+      createdAt: getPatientCreatedAt(patient),
+      status: 'search-result',
+      source: 'patient'
+    }))
+
+    console.log(`${LOG_PREFIX} search_patients_success`, { query: q, count: items.length })
+    return {
+      ok: true,
+      items
+    }
+  } catch (error) {
+    console.error(`${LOG_PREFIX} search_patients_fail`, {
+      query: q,
+      message: error?.message,
+      stack: error?.stack
+    })
+
+    return {
+      ok: false,
+      message: 'Unable to search patients right now.'
+    }
+  }
+}
