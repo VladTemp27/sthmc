@@ -3,6 +3,7 @@ import wixData from 'wix-data'
 const PATIENTS_COLLECTION_ID = 'Patients'
 const CHARTS_COLLECTION_ID = 'Charts'
 const LOG_PREFIX = '[homepage]'
+const WIX_DATA_OPTIONS = { suppressAuth: true, suppressHooks: true }
 
 function toIdString(value) {
   return String(value || '').trim()
@@ -36,9 +37,9 @@ export async function getHomepageSummary() {
   console.log(`${LOG_PREFIX} get_homepage_summary_start`)
   try {
     const [patientsResult, chartsResult, activeChartsResult] = await Promise.all([
-      wixData.query(PATIENTS_COLLECTION_ID).limit(1).count(),
-      wixData.query(CHARTS_COLLECTION_ID).limit(1).count(),
-      wixData.query(CHARTS_COLLECTION_ID).eq('isActive', true).limit(1).count()
+      wixData.query(PATIENTS_COLLECTION_ID).limit(1).count(WIX_DATA_OPTIONS),
+      wixData.query(CHARTS_COLLECTION_ID).limit(1).count(WIX_DATA_OPTIONS),
+      wixData.query(CHARTS_COLLECTION_ID).eq('isActive', true).limit(1).count(WIX_DATA_OPTIONS)
     ])
 
     const summary = {
@@ -72,8 +73,8 @@ export async function getRecentConsultations(limit = 2) {
 
   try {
     const [patientsResult, chartsResult] = await Promise.all([
-      wixData.query(PATIENTS_COLLECTION_ID).descending('createdAt').limit(1000).find(),
-      wixData.query(CHARTS_COLLECTION_ID).descending('createdAt').limit(1000).find()
+      wixData.query(PATIENTS_COLLECTION_ID).descending('createdAt').limit(1000).find(WIX_DATA_OPTIONS),
+      wixData.query(CHARTS_COLLECTION_ID).descending('createdAt').limit(1000).find(WIX_DATA_OPTIONS)
     ])
 
     const patients = patientsResult.items || []
@@ -200,14 +201,14 @@ export async function searchPatientsForHomepage(query = '', limit = 20) {
       .contains('firstName', q)
       .descending('createdAt')
       .limit(safeLimit)
-      .find()
+      .find(WIX_DATA_OPTIONS)
 
     const byLastName = await wixData
       .query(PATIENTS_COLLECTION_ID)
       .contains('lastName', q)
       .descending('createdAt')
       .limit(safeLimit)
-      .find()
+      .find(WIX_DATA_OPTIONS)
 
     const patientMap = new Map()
     ;[...(byFirstName.items || []), ...(byLastName.items || [])].forEach((patient) => {

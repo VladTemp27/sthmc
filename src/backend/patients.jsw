@@ -4,6 +4,7 @@ import { validateAndNormalizePatientPayload } from 'backend/patientValidation'
 
 const PATIENTS_COLLECTION_ID = 'Patients'
 const LOG_PREFIX = '[patients.savePatient]'
+const WIX_DATA_OPTIONS = { suppressAuth: true, suppressHooks: true }
 
 function toIdString(value) {
   return String(value || '').trim()
@@ -51,7 +52,7 @@ export async function savePatient(payload) {
   }
 
   try {
-    const insertedRecord = await wixData.insert(PATIENTS_COLLECTION_ID, record)
+    const insertedRecord = await wixData.insert(PATIENTS_COLLECTION_ID, record, WIX_DATA_OPTIONS)
     console.log(`${LOG_PREFIX} Insert success.`, { patientId: insertedRecord._id })
 
     return {
@@ -84,7 +85,7 @@ export async function getPatientById(patientId) {
   }
 
   try {
-    const patient = await wixData.get(PATIENTS_COLLECTION_ID, id)
+    const patient = await wixData.get(PATIENTS_COLLECTION_ID, id, WIX_DATA_OPTIONS)
 
     if (!patient || !patient._id) {
       return {

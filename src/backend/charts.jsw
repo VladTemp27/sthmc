@@ -3,6 +3,7 @@ import wixData from 'wix-data'
 const PATIENTS_COLLECTION_ID = 'Patients'
 const CHARTS_COLLECTION_ID = 'Charts'
 const LOG_PREFIX = '[charts]'
+const WIX_DATA_OPTIONS = { suppressAuth: true, suppressHooks: true }
 
 function toIdString(value) {
   return String(value || '').trim()
@@ -44,7 +45,7 @@ export async function createChartForPatient(patientId) {
   }
 
   try {
-    const patient = await wixData.get(PATIENTS_COLLECTION_ID, id)
+    const patient = await wixData.get(PATIENTS_COLLECTION_ID, id, WIX_DATA_OPTIONS)
     if (!patient || !patient._id) {
       return {
         ok: false,
@@ -53,7 +54,7 @@ export async function createChartForPatient(patientId) {
       }
     }
 
-    const activeChartsResult = await wixData.query(CHARTS_COLLECTION_ID).eq('patientId', id).eq('isActive', true).limit(100).find()
+    const activeChartsResult = await wixData.query(CHARTS_COLLECTION_ID).eq('patientId', id).eq('isActive', true).limit(100).find(WIX_DATA_OPTIONS)
     const activeCharts = activeChartsResult.items || []
     console.log(`${LOG_PREFIX} Active charts found before create.`, { patientId: id, activeCount: activeCharts.length })
 
@@ -63,7 +64,7 @@ export async function createChartForPatient(patientId) {
           ...chart,
           isActive: false,
           deactivatedAt: new Date()
-        })
+        }, WIX_DATA_OPTIONS)
       )
     )
 
@@ -73,7 +74,7 @@ export async function createChartForPatient(patientId) {
       status: 'open',
       createdAt: new Date(),
       deactivatedAt: null
-    })
+    }, WIX_DATA_OPTIONS)
     console.log(`${LOG_PREFIX} Chart created successfully.`, { patientId: id, chartId: inserted._id })
 
     return {
@@ -110,7 +111,7 @@ export async function getChartContext(patientId, chartId) {
   }
 
   try {
-    const chart = await wixData.get(CHARTS_COLLECTION_ID, chartIdValue)
+    const chart = await wixData.get(CHARTS_COLLECTION_ID, chartIdValue, WIX_DATA_OPTIONS)
     if (!chart || !chart._id) {
       return {
         ok: false,
@@ -127,7 +128,7 @@ export async function getChartContext(patientId, chartId) {
       }
     }
 
-    const patient = await wixData.get(PATIENTS_COLLECTION_ID, patientIdValue)
+    const patient = await wixData.get(PATIENTS_COLLECTION_ID, patientIdValue, WIX_DATA_OPTIONS)
     if (!patient || !patient._id) {
       return {
         ok: false,
@@ -200,7 +201,7 @@ export async function getChartsForPatient(patientId, limit = 50) {
       .eq('patientId', patientIdValue)
       .descending('createdAt')
       .limit(safeLimit)
-      .find()
+      .find(WIX_DATA_OPTIONS)
 
     const items = (result.items || []).map((chart) => ({
       chartId: toIdString(chart._id),
@@ -252,7 +253,7 @@ export async function getLatestChartForPatient(patientId) {
       .descending('updatedAt')
       .descending('createdAt')
       .limit(1)
-      .find()
+      .find(WIX_DATA_OPTIONS)
 
     const latest = (result.items || [])[0]
     if (!latest || !latest._id) {
@@ -303,7 +304,7 @@ export async function updateChartData(patientId, chartId, payload = {}) {
   }
 
   try {
-    const chart = await wixData.get(CHARTS_COLLECTION_ID, chartIdValue)
+    const chart = await wixData.get(CHARTS_COLLECTION_ID, chartIdValue, WIX_DATA_OPTIONS)
     if (!chart || !chart._id) {
       return {
         ok: false,
@@ -333,7 +334,7 @@ export async function updateChartData(patientId, chartId, payload = {}) {
       medicationsAd: toNullableText(payload.medicationsAd),
       chartDate: toNullableDate(payload.chartDate),
       updatedAt: new Date()
-    })
+    }, WIX_DATA_OPTIONS)
     console.log(`${LOG_PREFIX} Chart updated successfully.`, {
       patientId: patientIdValue,
       chartId: updated._id,
