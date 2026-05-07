@@ -90,7 +90,7 @@
           "invoke": true
         },
         "anonymous": {
-          "invoke": false
+          "invoke": true
         }
       },
       "getRecentConsultations": {
@@ -101,7 +101,7 @@
           "invoke": true
         },
         "anonymous": {
-          "invoke": false
+          "invoke": true
         }
       },
       "searchPatientsForHomepage": {
@@ -112,7 +112,7 @@
           "invoke": true
         },
         "anonymous": {
-          "invoke": false
+          "invoke": true
         }
       }
     },
