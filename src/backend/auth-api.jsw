@@ -85,115 +85,201 @@ export async function login(emailRaw, passwordRaw) {
     const password = String(passwordRaw || '');
     const ip = 'web-module';
     const rateKey = buildRateLimitKey(email, ip);
+    console.log('[auth-api] login_start', {
+        email,
+        hasPassword: Boolean(password)
+    });
 
-    if (!validateEmail(email) || !password) {
-        return loginFailedResponse(400);
-    }
+    try {
+        if (!validateEmail(email) || !password) {
+            console.log('[auth-api] login_validation_failed', {
+                email,
+                validEmail: validateEmail(email),
+                hasPassword: Boolean(password)
+            });
+            return loginFailedResponse(400);
+        }
 
-    if (isRateLimited(rateKey)) {
+        if (isRateLimited(rateKey)) {
+            console.log('[auth-api] login_rate_limited', { email, rateKey });
+            return {
+                ok: false,
+                status: 429,
+                error: 'Too many login attempts. Please try again later.'
+            };
+        }
+
+        const user = await getUserByEmail(email);
+        console.log('[auth-api] login_user_lookup', {
+            email,
+            userFound: Boolean(user),
+            isActive: Boolean(user?.isActive)
+        });
+        if (!user || !user.isActive) {
+            recordFailedAttempt(rateKey);
+            return loginFailedResponse(401);
+        }
+
+        const now = Date.now();
+        const normalizedUser = await clearExpiredLockIfNeeded(user, now);
+        console.log('[auth-api] login_user_normalized', {
+            userId: normalizedUser?._id,
+            hasLockUntil: Boolean(normalizedUser?.lockUntil)
+        });
+
+        if (isUserLocked(normalizedUser, now)) {
+            console.log('[auth-api] login_user_locked', {
+                userId: normalizedUser?._id,
+                lockUntil: normalizedUser?.lockUntil
+            });
+            recordFailedAttempt(rateKey);
+            return loginFailedResponse(401);
+        }
+
+        const passwordOk = verifyPassword(password, normalizedUser.passwordHash);
+        console.log('[auth-api] login_password_check', {
+            userId: normalizedUser?._id,
+            passwordOk
+        });
+        if (!passwordOk) {
+            recordFailedAttempt(rateKey);
+            await handleFailedPassword(normalizedUser, now);
+            return loginFailedResponse(401);
+        }
+
+        const sessionId = await createSession({
+            userId: normalizedUser._id,
+            ipHash: hashIp(ip),
+            userAgent: 'web-module',
+            now
+        });
+
+        await wixData.update(COLLECTIONS.USERS, {
+            ...normalizedUser,
+            failedLoginCount: 0,
+            lockUntil: null,
+            lastLoginAt: new Date(now)
+        });
+        console.log('[auth-api] login_user_updated_after_success', {
+            userId: normalizedUser?._id
+        });
+
+        clearAttempts(rateKey);
+        console.log('[auth-api] login_success', {
+            userId: normalizedUser?._id,
+            email,
+            hasSessionId: Boolean(sessionId)
+        });
+
+        return {
+            ok: true,
+            status: 200,
+            user: {
+                id: normalizedUser._id,
+                email: normalizedUser.email,
+                role: normalizedUser.role || null
+            },
+            sessionId
+        };
+    } catch (error) {
+        console.error('[auth-api] login_error', {
+            email,
+            message: error?.message,
+            stack: error?.stack
+        });
         return {
             ok: false,
-            status: 429,
-            error: 'Too many login attempts. Please try again later.'
+            status: 500,
+            error: 'Unable to log in right now. Please try again.'
         };
     }
-
-    const user = await getUserByEmail(email);
-    if (!user || !user.isActive) {
-        recordFailedAttempt(rateKey);
-        return loginFailedResponse(401);
-    }
-
-    const now = Date.now();
-    const normalizedUser = await clearExpiredLockIfNeeded(user, now);
-
-    if (isUserLocked(normalizedUser, now)) {
-        recordFailedAttempt(rateKey);
-        return loginFailedResponse(401);
-    }
-
-    const passwordOk = verifyPassword(password, normalizedUser.passwordHash);
-    if (!passwordOk) {
-        recordFailedAttempt(rateKey);
-        await handleFailedPassword(normalizedUser, now);
-        return loginFailedResponse(401);
-    }
-
-    const sessionId = await createSession({
-        userId: normalizedUser._id,
-        ipHash: hashIp(ip),
-        userAgent: 'web-module',
-        now
-    });
-
-    await wixData.update(COLLECTIONS.USERS, {
-        ...normalizedUser,
-        failedLoginCount: 0,
-        lockUntil: null,
-        lastLoginAt: new Date(now)
-    });
-
-    clearAttempts(rateKey);
-
-    return {
-        ok: true,
-        status: 200,
-        user: {
-            id: normalizedUser._id,
-            email: normalizedUser.email,
-            role: normalizedUser.role || null
-        },
-        sessionId
-    };
 }
 
 export async function me(sessionId) {
     const id = String(sessionId || '');
-    if (!id) {
-        return {
-            ok: false,
-            status: 401,
-            error: 'Unauthorized'
-        };
-    }
-
-    const activeSession = await getSession(id);
-    if (!activeSession) {
-        return {
-            ok: false,
-            status: 401,
-            error: 'Unauthorized'
-        };
-    }
-
-    const user = await wixData.get(COLLECTIONS.USERS, activeSession.userId);
-    if (!user || !user.isActive) {
-        return {
-            ok: false,
-            status: 401,
-            error: 'Unauthorized'
-        };
-    }
-
-    return {
-        ok: true,
-        status: 200,
-        user: {
-            id: user._id,
-            email: user.email,
-            role: user.role || null
+    console.log('[auth-api] me_start', { hasSessionId: Boolean(id) });
+    try {
+        if (!id) {
+            return {
+                ok: false,
+                status: 401,
+                error: 'Unauthorized'
+            };
         }
-    };
+
+        const activeSession = await getSession(id);
+        console.log('[auth-api] me_session_lookup', {
+            hasSession: Boolean(activeSession),
+            userId: activeSession?.userId || null
+        });
+        if (!activeSession) {
+            return {
+                ok: false,
+                status: 401,
+                error: 'Unauthorized'
+            };
+        }
+
+        const user = await wixData.get(COLLECTIONS.USERS, activeSession.userId);
+        console.log('[auth-api] me_user_lookup', {
+            userId: activeSession.userId,
+            userFound: Boolean(user),
+            isActive: Boolean(user?.isActive)
+        });
+        if (!user || !user.isActive) {
+            return {
+                ok: false,
+                status: 401,
+                error: 'Unauthorized'
+            };
+        }
+
+        return {
+            ok: true,
+            status: 200,
+            user: {
+                id: user._id,
+                email: user.email,
+                role: user.role || null
+            }
+        };
+    } catch (error) {
+        console.error('[auth-api] me_error', {
+            hasSessionId: Boolean(id),
+            message: error?.message,
+            stack: error?.stack
+        });
+        return {
+            ok: false,
+            status: 500,
+            error: 'Unable to verify session right now.'
+        };
+    }
 }
 
 export async function logout(sessionId) {
     const id = String(sessionId || '');
-    if (id) {
-        await revokeSession(id);
-    }
+    console.log('[auth-api] logout_start', { hasSessionId: Boolean(id) });
+    try {
+        if (id) {
+            await revokeSession(id);
+            console.log('[auth-api] logout_session_revoked', { hasSessionId: true });
+        }
 
-    return {
-        ok: true,
-        status: 200
-    };
+        return {
+            ok: true,
+            status: 200
+        };
+    } catch (error) {
+        console.error('[auth-api] logout_error', {
+            hasSessionId: Boolean(id),
+            message: error?.message,
+            stack: error?.stack
+        });
+        return {
+            ok: false,
+            status: 500,
+            error: 'Unable to log out right now.'
+        };
+    }
 }
