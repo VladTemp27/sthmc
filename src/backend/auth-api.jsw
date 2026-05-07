@@ -18,7 +18,7 @@ async function getUserByEmail(email) {
     const result = await wixData.query(COLLECTIONS.USERS)
         .eq('email', email)
         .limit(1)
-        .find();
+        .find({ suppressAuth: true, suppressHooks: true });
 
     return result.items?.[0] || null;
 }
@@ -55,7 +55,7 @@ async function clearExpiredLockIfNeeded(user, now = Date.now()) {
         lockUntil: null
     };
 
-    await wixData.update(COLLECTIONS.USERS, updatedUser);
+    await wixData.update(COLLECTIONS.USERS, updatedUser, { suppressAuth: true, suppressHooks: true });
     return updatedUser;
 }
 
@@ -77,7 +77,7 @@ async function handleFailedPassword(user, now) {
     await wixData.update(COLLECTIONS.USERS, {
         ...user,
         ...updates
-    });
+    }, { suppressAuth: true, suppressHooks: true });
 }
 
 export async function login(emailRaw, passwordRaw) {
@@ -167,7 +167,7 @@ export async function login(emailRaw, passwordRaw) {
             failedLoginCount: 0,
             lockUntil: null,
             lastLoginAt: new Date(now)
-        });
+        }, { suppressAuth: true, suppressHooks: true });
         console.log('[auth-api] login_user_updated_after_success', {
             userId: normalizedUser?._id
         });
@@ -232,7 +232,7 @@ export async function me(sessionId) {
             };
         }
 
-        const user = await wixData.get(COLLECTIONS.USERS, activeSession.userId);
+        const user = await wixData.get(COLLECTIONS.USERS, activeSession.userId, { suppressAuth: true, suppressHooks: true });
         console.log('[auth-api] me_user_lookup', {
             userId: activeSession.userId,
             userFound: Boolean(user),

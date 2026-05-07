@@ -25,7 +25,7 @@ export async function createSession({ userId, ipHash, userAgent, now = Date.now(
         expiresAt: new Date(now + SESSION.TTL_MS),
         ipHash,
         userAgent
-    });
+    }, { suppressAuth: true, suppressHooks: true });
 
     return sessionId;
 }
@@ -34,7 +34,7 @@ export async function getSession(sessionId, now = Date.now()) {
     const result = await wixData.query(COLLECTIONS.SESSIONS)
         .eq('sessionId', sessionId)
         .limit(1)
-        .find();
+        .find({ suppressAuth: true, suppressHooks: true });
 
     const session = result.items?.[0];
     if (!session) {
@@ -43,7 +43,7 @@ export async function getSession(sessionId, now = Date.now()) {
 
     if (isExpired(session, now)) {
         if (session._id) {
-            await wixData.remove(COLLECTIONS.SESSIONS, session._id);
+            await wixData.remove(COLLECTIONS.SESSIONS, session._id, { suppressAuth: true, suppressHooks: true });
         }
         return null;
     }
@@ -59,13 +59,13 @@ export async function revokeSession(sessionId) {
     const result = await wixData.query(COLLECTIONS.SESSIONS)
         .eq('sessionId', sessionId)
         .limit(1)
-        .find();
+        .find({ suppressAuth: true, suppressHooks: true });
 
     const session = result.items?.[0];
     if (!session?._id) {
         return false;
     }
 
-    await wixData.remove(COLLECTIONS.SESSIONS, session._id);
+    await wixData.remove(COLLECTIONS.SESSIONS, session._id, { suppressAuth: true, suppressHooks: true });
     return true;
 }
