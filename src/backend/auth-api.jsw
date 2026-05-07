@@ -90,8 +90,10 @@ export async function login(emailRaw, passwordRaw) {
         hasPassword: Boolean(password)
     });
 
+    let stage = 'init';
     try {
         if (!validateEmail(email) || !password) {
+            stage = 'validate_input';
             console.log('[auth-api] login_validation_failed', {
                 email,
                 validEmail: validateEmail(email),
@@ -101,6 +103,7 @@ export async function login(emailRaw, passwordRaw) {
         }
 
         if (isRateLimited(rateKey)) {
+            stage = 'rate_limit_check';
             console.log('[auth-api] login_rate_limited', { email, rateKey });
             return {
                 ok: false,
@@ -109,6 +112,7 @@ export async function login(emailRaw, passwordRaw) {
             };
         }
 
+        stage = 'query_user';
         const user = await getUserByEmail(email);
         console.log('[auth-api] login_user_lookup', {
             email,
@@ -121,6 +125,7 @@ export async function login(emailRaw, passwordRaw) {
         }
 
         const now = Date.now();
+        stage = 'normalize_user_lock';
         const normalizedUser = await clearExpiredLockIfNeeded(user, now);
         console.log('[auth-api] login_user_normalized', {
             userId: normalizedUser?._id,
@@ -136,6 +141,7 @@ export async function login(emailRaw, passwordRaw) {
             return loginFailedResponse(401);
         }
 
+        stage = 'verify_password';
         const passwordOk = verifyPassword(password, normalizedUser.passwordHash);
         console.log('[auth-api] login_password_check', {
             userId: normalizedUser?._id,
@@ -147,6 +153,7 @@ export async function login(emailRaw, passwordRaw) {
             return loginFailedResponse(401);
         }
 
+        stage = 'create_session';
         const sessionId = await createSession({
             userId: normalizedUser._id,
             ipHash: hashIp(ip),
@@ -154,6 +161,7 @@ export async function login(emailRaw, passwordRaw) {
             now
         });
 
+        stage = 'update_user_after_login';
         await wixData.update(COLLECTIONS.USERS, {
             ...normalizedUser,
             failedLoginCount: 0,
@@ -171,6 +179,7 @@ export async function login(emailRaw, passwordRaw) {
             hasSessionId: Boolean(sessionId)
         });
 
+        stage = 'success';
         return {
             ok: true,
             status: 200,
@@ -184,6 +193,7 @@ export async function login(emailRaw, passwordRaw) {
     } catch (error) {
         console.error('[auth-api] login_error', {
             email,
+            stage,
             message: error?.message,
             stack: error?.stack
         });

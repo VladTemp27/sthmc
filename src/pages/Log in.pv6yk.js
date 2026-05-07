@@ -182,7 +182,11 @@ async function submitLogin() {
         });
 
         if (!result?.ok) {
-            const message = result?.status === 429 && result?.error ? String(result.error) : GENERIC_ERROR;
+            const message = result?.status && result.status >= 500
+                ? 'Login service is temporarily unavailable. Please try again in a minute.'
+                : result?.status === 429 && result?.error
+                    ? String(result.error)
+                    : GENERIC_ERROR;
             await showErrorMessage(message);
             return;
         }
