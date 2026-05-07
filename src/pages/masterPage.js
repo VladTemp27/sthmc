@@ -26,6 +26,22 @@ function getLoginButton() {
     }
 }
 
+function wireNavButton(button, targetPath) {
+    if (!button) {
+        return;
+    }
+
+    if ('link' in button) {
+        button.link = targetPath;
+    }
+
+    if ('onClick' in button) {
+        button.onClick(() => {
+            wixLocation.to(targetPath);
+        });
+    }
+}
+
 $w.onReady(async function () {
     const button = getLoginButton();
     if (!button) {
@@ -40,11 +56,7 @@ $w.onReady(async function () {
         button.label = label;
     }
 
-    if ('onClick' in button) {
-        button.onClick(() => {
-            wixLocation.to(targetPath);
-        });
-    }
+    wireNavButton(button, targetPath);
 
     console.log(`${LOG_PREFIX} nav_button_state`, { authed, label, targetPath });
 });
