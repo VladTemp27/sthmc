@@ -134,7 +134,8 @@ sequenceDiagram
     auth-->>authService.js: { ok: true, sessionId, user }
     authService.js-->>http-functions.js: success result
 
-    http-functions.js-->>Client: 200 OK + Set-Cookie: custom_auth_session=<sessionId>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=86400
+    http-functions.js-->>Client: 200 OK JSON body
+    Note over http-functions.js,Client: Set-Cookie: custom_auth_session=sessionId<br/>HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=86400
 ```
 
 ---
