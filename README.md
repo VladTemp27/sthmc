@@ -61,5 +61,5 @@ Required collection IDs:
 
 See:
 
-- `docs/auth-data-model.md`
-- `docs/auth-manual-ops.md`
+- `docs/02-authentication.md`
+- `docs/06-setup.md`
